@@ -233,13 +233,16 @@ tagsInput.directive('tagsInput', ["$timeout", "$document", "$window", "tagsInput
                         return $scope.tagList.add(tag);
                     },
                     focusInput: function() {
-                        input[0].focus();
+                        $timeout(function(){
+                            input[0].focus();
+                        }, 100);
+
                     },
                     getTags: function() {
                         return $scope.tagList.items;
                     },
                     getCurrentTagText: function() {
-                        return $scope.newTag.text();
+                        return $scope.newTag.text;
                     },
                     getOptions: function() {
                         return $scope.options;
@@ -277,7 +280,7 @@ tagsInput.directive('tagsInput', ["$timeout", "$document", "$window", "tagsInput
             setElementValidity = function() {
                 ngModelCtrl.$setValidity('maxTags', tagList.items.length <= options.maxTags);
                 ngModelCtrl.$setValidity('minTags', tagList.items.length >= options.minTags);
-                ngModelCtrl.$setValidity('leftoverText', scope.hasFocus || options.allowLeftoverText ? true : !scope.newTag.text());
+                ngModelCtrl.$setValidity('leftoverText', scope.hasFocus || options.allowLeftoverText ? true : !scope.newTag.text);
             };
 
             ngModelCtrl.$isEmpty = function(value) {
@@ -285,17 +288,19 @@ tagsInput.directive('tagsInput', ["$timeout", "$document", "$window", "tagsInput
             };
 
             scope.newTag = {
-                text: function(value) {
-                    if (angular.isDefined(value)) {
-                        scope.text = value;
-                        events.trigger('input-change', value);
-                    }
-                    else {
-                        return scope.text || '';
-                    }
-                },
+                text: scope.text || '',
                 invalid: null
             };
+
+            scope.manualSaveTag = function(){
+                tagList.addText(scope.newTag.text);
+            };
+
+            scope.$watch('newTag.text', function(newVal, oldVal){
+                if (angular.isDefined(newVal)) {
+                    events.trigger('input-change', newVal);
+                }
+            });
 
             scope.track = function(tag) {
                 return tag[options.keyProperty || options.displayProperty];
@@ -316,7 +321,8 @@ tagsInput.directive('tagsInput', ["$timeout", "$document", "$window", "tagsInput
 
                 // ngModelController won't trigger validators when the model changes (because it's an array),
                 // so we need to do it ourselves. Unfortunately this won't trigger any registered formatter.
-                ngModelCtrl.$validate();
+                //ngModelCtrl.$validate();
+                //console.log(ngModelCtrl);
             });
 
             attrs.$observe('disabled', function(value) {
@@ -361,7 +367,7 @@ tagsInput.directive('tagsInput', ["$timeout", "$document", "$window", "tagsInput
                         if (scope.disabled) {
                             return;
                         }
-                        input[0].focus();
+                        $timeout(function(){input[0].focus();});
                     }
                 },
                 tag: {
@@ -377,14 +383,15 @@ tagsInput.directive('tagsInput', ["$timeout", "$document", "$window", "tagsInput
                 .on('tag-removed', scope.onTagRemoved)
                 .on('tag-clicked', scope.onTagClicked)
                 .on('tag-added', function() {
-                    scope.newTag.text('');
+                    scope.newTag.text = '';
                 })
                 .on('tag-added tag-removed', function() {
                     scope.tags = tagList.items;
                     // Ideally we should be able call $setViewValue here and let it in turn call $setDirty and $validate
                     // automatically, but since the model is an array, $setViewValue does nothing and it's up to us to do it.
                     // Unfortunately this won't trigger any registered $parser and there's no safe way to do it.
-                    ngModelCtrl.$setDirty();
+                    //ngModelCtrl.$setDirty();
+                    ngModelCtrl.$setViewValue(ngModelCtrl.$viewValue)
                 })
                 .on('invalid-tag', function() {
                     scope.newTag.invalid = true;
@@ -404,7 +411,7 @@ tagsInput.directive('tagsInput', ["$timeout", "$document", "$window", "tagsInput
                 })
                 .on('input-blur', function() {
                     if (options.addOnBlur && !options.addFromAutocompleteOnly) {
-                        tagList.addText(scope.newTag.text());
+                        tagList.addText(scope.newTag.text);
                     }
                     element.triggerHandler('blur');
                     setElementValidity();
@@ -424,11 +431,11 @@ tagsInput.directive('tagsInput', ["$timeout", "$document", "$window", "tagsInput
 
                     shouldAdd = !options.addFromAutocompleteOnly && addKeys[key];
                     shouldRemove = (key === KEYS.backspace || key === KEYS.delete) && tagList.selected;
-                    shouldEditLastTag = key === KEYS.backspace && scope.newTag.text().length === 0 && options.enableEditingLastTag;
-                    shouldSelect = (key === KEYS.backspace || key === KEYS.left || key === KEYS.right) && scope.newTag.text().length === 0 && !options.enableEditingLastTag;
+                    shouldEditLastTag = key === KEYS.backspace && scope.newTag.text.length === 0 && options.enableEditingLastTag;
+                    shouldSelect = (key === KEYS.backspace || key === KEYS.left || key === KEYS.right) && scope.newTag.text.length === 0 && !options.enableEditingLastTag;
 
                     if (shouldAdd) {
-                        tagList.addText(scope.newTag.text());
+                        tagList.addText(scope.newTag.text);
                     }
                     else if (shouldEditLastTag) {
                         var tag;
@@ -437,7 +444,7 @@ tagsInput.directive('tagsInput', ["$timeout", "$document", "$window", "tagsInput
                         tag = tagList.removeSelected();
 
                         if (tag) {
-                            scope.newTag.text(tag[options.displayProperty]);
+                            scope.newTag.text = tag[options.displayProperty];
                         }
                     }
                     else if (shouldRemove) {
@@ -1132,15 +1139,15 @@ tagsInput.factory('tiUtil', ["$timeout", function($timeout) {
 /* HTML templates */
 tagsInput.run(["$templateCache", function($templateCache) {
     $templateCache.put('ngTagsInput/tags-input.html',
-    "<div class=\"host\" tabindex=\"-1\" ng-click=\"eventHandlers.host.click()\" ti-transclude-append><div class=\"tags\" ng-class=\"{focused: hasFocus}\"><ul class=\"tag-list\"><li class=\"tag-item\" ng-repeat=\"tag in tagList.items track by track(tag)\" ng-class=\"{ selected: tag == tagList.selected }\" ng-click=\"eventHandlers.tag.click(tag)\"><ti-tag-item data=\"::tag\"></ti-tag-item></li></ul><input class=\"input\" autocomplete=\"off\" ng-model=\"newTag.text\" ng-model-options=\"{getterSetter: true}\" ng-keydown=\"eventHandlers.input.keydown($event)\" ng-focus=\"eventHandlers.input.focus($event)\" ng-blur=\"eventHandlers.input.blur($event)\" ng-paste=\"eventHandlers.input.paste($event)\" ng-trim=\"false\" ng-class=\"{'invalid-tag': newTag.invalid}\" ng-disabled=\"disabled\" ti-bind-attrs=\"{type: options.type, placeholder: options.placeholder, tabindex: options.tabindex, spellcheck: options.spellcheck}\" ti-autosize></div></div>"
+    "<div class=\"host\" tabindex=\"-1\" ng-click=\"eventHandlers.host.click()\" ti-transclude-append><div class=\"tags\" ng-class=\"{focused: hasFocus}\"><ul class=\"tag-list\"><li class=\"tag-item\" ng-repeat=\"tag in tagList.items track by track(tag)\" ng-class=\"{ selected: tag == tagList.selected }\" ng-click=\"eventHandlers.tag.click(tag)\"><ti-tag-item data=\"tag\"></ti-tag-item></li></ul><input class=\"input\" autocomplete=\"off\" ng-model=\"newTag.text\" ng-model-options=\"{getterSetter: true}\" ng-keydown=\"eventHandlers.input.keydown($event)\" ng-focus=\"eventHandlers.input.focus($event)\" ng-blur=\"eventHandlers.input.blur($event)\" ng-paste=\"eventHandlers.input.paste($event)\" ng-trim=\"false\" ng-class=\"{'invalid-tag': newTag.invalid}\" ng-disabled=\"disabled\" ti-bind-attrs=\"{type: options.type, placeholder: options.placeholder, tabindex: options.tabindex, spellcheck: options.spellcheck}\" ti-autosize><span class=\"save-tag\" ng-show=\"newTag.text\" ng-click=\"manualSaveTag()\"><i class=\"fa fa-floppy-o\"></i></span></div></div>"
   );
 
   $templateCache.put('ngTagsInput/tag-item.html',
-    "<span ng-bind=\"$getDisplayText()\"></span> <a class=\"remove-button\" ng-click=\"$removeTag()\" ng-bind=\"::$$removeTagSymbol\"></a>"
+    "<span ng-bind=\"$getDisplayText()\"></span> <a class=\"remove-button\" ng-click=\"$removeTag()\" ng-bind=\"$$removeTagSymbol\"></a>"
   );
 
   $templateCache.put('ngTagsInput/auto-complete.html',
-    "<div class=\"autocomplete\" ng-if=\"suggestionList.visible\"><ul class=\"suggestion-list\"><li class=\"suggestion-item\" ng-repeat=\"item in suggestionList.items track by track(item)\" ng-class=\"{selected: item == suggestionList.selected}\" ng-click=\"addSuggestionByIndex($index)\" ng-mouseenter=\"suggestionList.select($index)\"><ti-autocomplete-match data=\"::item\"></ti-autocomplete-match></li></ul></div>"
+    "<div class=\"autocomplete\" ng-if=\"suggestionList.visible\"><ul class=\"suggestion-list\"><li class=\"suggestion-item\" ng-repeat=\"item in suggestionList.items track by track(item)\" ng-class=\"{selected: item == suggestionList.selected}\" ng-click=\"addSuggestionByIndex($index)\" ng-mouseenter=\"suggestionList.select($index)\"><ti-autocomplete-match data=\"item\"></ti-autocomplete-match></li></ul></div>"
   );
 
   $templateCache.put('ngTagsInput/auto-complete-match.html',
